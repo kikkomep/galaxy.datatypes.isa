@@ -1,6 +1,6 @@
 # galaxy.datatypes.isa #
 
-This repository supports both ISA-Tab and ISA-JSON data formats as Galaxy datatypes.
+This project aims to support both ISA-Tab and ISA-JSON data formats as Galaxy datatypes.
 
 ### How to install? ###
 
