@@ -15,8 +15,8 @@ This repository supports both ISA-Tab and ISA-JSON data formats as Galaxy dataty
 	- as child of the `datatypes > sniffers` tag:
 
 		```xml
-<sniffer type="galaxy.datatypes.isa:Isa"/>
-```
+		<sniffer type="galaxy.datatypes.isa:Isa"/>
+		```
 
 
 ### Copyrights ###
