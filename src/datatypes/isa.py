@@ -3,14 +3,46 @@ ISA datatype
 
 See http://isa-tools.org
 
+
+Notes.
+======
+
+Apparently this class is marginally used during the upload process;
+indeed it is the uploader tool that takes care of uploading and placing the raw data of the dataset
+to the final destination on the Galaxy data folders.
+The only method which is called is the `set_meta(...)` which contains the reference to the filname
+of the already uploaded dataset (property `filename` of the `dataset` parameter).
+
+At the moment, a reasonable strategy to support ISA datatypes might be the following:
+
+    * define a composite datatype:
+        this allows us to associate all the ISA files of a dataset
+        to a dedicated subdirectory which Galaxy composite datatypes use to host their files;
+
+    * update the existing Galaxy uploader (or create a new uploader tool) to properly handle
+        the initialization of the new datatype during its upload,
+        i.e., given a zip ISA dataset, the uploader should extract all its files to the subfolder mentioned above
+
+With this kind of implementation it becomes very simple to pass a dataset constituted by more than one file
+to a Galaxy tool: it can be done using the `extra_files_path` property of the input parameter.
+
+    Example of tool command:
+    -----------------------
+    ```<command interpreter="python">isa-test.py ${input} ${input.extra_files_path} $output</command>```
+    -----------------------------------------------------------------------------------------------------
+
 """
 
 from __future__ import print_function
 
 import os
 import sys
+import glob
+# import zipfile
 import logging
 import tarfile
+import tempfile
+import shutil
 
 from galaxy.datatypes import data
 from galaxy.datatypes import metadata
@@ -30,53 +62,66 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-class Isa(data.Text):
+class Isa(data.Data):
     """Tab delimited data in foo format"""
     file_ext = "isa"
-    # edam_format = "format_2331"
-    # composite_type = 'auto_primary_file'
-    composite_type = 'basic'
+    composite_type = 'basic'  # 'auto_primary_file'
     allow_datatype_change = False
-    is_binary = False
+    is_binary = True
 
     # metadata.MetadataElement(name="base_name", desc="base name isa tab dataset",
     #                          default='Text',
     #                          readonly=True, set_in_upload=True)
 
     def __init__(self, **kwd):
-        data.Text.__init__(self, **kwd)
-        # logger.info("The current dataset: ", self.__dict__.keys())
-        # print(self)
-        # print(kwd, file=sys.stderr)
-        # logger.info("Dataset ISA options: %s", kwd)
-        # self.add_composite_file("*.txt", description="Investigation file")
-        # self.add_composite_file("archive.tar.gz", description="Investigation file")
+        data.Data.__init__(self, **kwd)
 
-        # self.add_composite_file('i_investigation.txt', mimetype='text/plain')
-        # self.add_composite_file('archive',
-        #                         description='ISA Archive',
-        #                         # substitute_name_with_metadata='base_name',
-        #                         is_binary=True)
-        # self.add_composite_file('%s.map',
-        #                         description='Map File',
-        #                         substitute_name_with_metadata='base_name',
-        #                         is_binary=False)
+    def get_primary_filename(self, files_path):
+        """ Use the `investigation` file as primary"""
+        investigation_file_pattern = "i_*.txt"  # TODO: check pattern to identify the investigation file
+        res = glob.glob(os.path.join(files_path, investigation_file_pattern))
+        if len(res) > 0:
+            if len(res) == 1:
+                return res[0]
+            print("More than one file match the pattern '%s' "
+                  "to identify the investigation file" % investigation_file_pattern)
+        return None
 
-        # for k, n in self.composite_files.items():
-        #     print("%s --> %s" % (k, n))
-        # self.add_composite_file("%s.txt", description="Investigation file", substitute_name_with_metadata='base_name',
-        #                         is_binary=False)
-        # self.add_composite_file("prova.txt", description="Prova file")
+    def write_from_stream(self, dataset, stream):
+        # TODO: check if the actual file is really a TAR archive
+        # extract the archive to a temp folder
+        tmp_folder = tempfile.mkdtemp()
+        print("Using the custom uploader")
+        with tarfile.open(fileobj=stream) as tar:
+            for tarinfo in tar:
+                print("File name: %s " % tarinfo.name)
+            tar.extractall(path=tmp_folder)
+
+        # FIXME: update this logic with a better implementation
+        tmp_files = os.listdir(tmp_folder)
+        if len(tmp_files) > 0:
+            first_path = os.path.join(tmp_folder, tmp_files[0])
+            if os.path.isdir(first_path):
+                shutil.move(os.path.join(tmp_folder, tmp_files[0]), dataset.files_path)
+            else:
+                shutil.move(tmp_folder, dataset.files_path)
+        else:
+            print("No files found within the temp folder!!!!")
+
+        primary_filename = self.get_primary_filename(dataset.files_path)
+        if primary_filename is None:
+            raise Exception("Unable to find the investigation file!!!")
+
+        print("Primary (investigation) filename: %s" % primary_filename)
+        shutil.copy(os.path.join(dataset.files_path, primary_filename), dataset.file_name)
+
+        print("All files saved!!!")
 
     def generate_primary_file(self, dataset=None):
-        logger.info("Dataset type: %s, keys=%s, values=%s", type(dataset), dataset.keys(), dataset.values())
+        print("Dataset type: %s, keys=%s, values=%s", type(dataset), dataset.keys(), dataset.values())
 
         rval = ['<html><head><title>Wiff Composite Dataset </title></head><p/>']
         rval.append('<div>This composite dataset is composed of the following files:<p/><ul>')
-
-        # with tarfile.open(dataset.get("datatype").primary_file_name, "r") as tar:
-        #     for tarinfo in tar:
-        #         logger.info(tarinfo.name, tarinfo.size)
 
         for composite_name, composite_file in self.get_composite_files(dataset=dataset).items():
             fn = composite_name
@@ -92,7 +137,7 @@ class Isa(data.Text):
         return "\n".join(rval)
 
     def sniff(self, filename):
-        print("Checking if it is an ISA: %s" % filename)
+        logger.info("Checking if it is an ISA: %s" % filename)
         return True
 
     def validate(self, dataset):
@@ -100,30 +145,12 @@ class Isa(data.Text):
         return super(Isa, self).validate(dataset)
 
     def set_meta(self, dataset, **kwd):
-        #logger.info("Setting metadata of ISA type: %s", dataset.file_name)
         print("Setting metadata of ISA type: %s" % dataset.file_name)
         # raise Error("Setting metadata of ISA type")
         super(Isa, self).set_meta(dataset, **kwd)
 
-#        with tarfile.open(dataset.file_name, "r:gz") as tar:
-#            for tarinfo in tar:
-#                print("file: %s (%s)" % (tarinfo.name, tarinfo.size))
-
-    def write_from_stream(self, dataset, stream):
-        print("Writing Dataset type: %s, keys=%s, values=%s, type_stream=%s", type(dataset), dataset.keys(),
-              dataset.values(), type(stream))
-        # tar = tarfile.TarFile(fileobj=stream, mode="r:gz")
-        # # with tarfile.open(fileobj=stream, mode="r:gz") as tar:
-        # for tarinfo in tar:
-        #     logger.info(tarinfo.name, tarinfo.size)
-        #
-        # tar.close()
-        # logger.info(type(self.get_raw_data(dataset)))
-        super(Isa, self).write_from_stream(dataset, stream)
-
     def split(cls, input_datasets, subdir_generator_function, split_params):
-        print("Splitting")
-	super(Isa, cls).split(input_datasets, subdir_generator_function, split_params)
+        super(Isa, cls).split(input_datasets, subdir_generator_function, split_params)
 
     def set_raw_data(self, dataset, data):
         print("Setting raw data")
