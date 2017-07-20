@@ -92,22 +92,22 @@ class Isa(data.Text):
         return "\n".join(rval)
 
     def sniff(self, filename):
-        logger.info("Checking if it is an ISA: %s", filename)
+        print("Checking if it is an ISA: %s" % filename)
         return True
 
     def validate(self, dataset):
-        logger.info("Validating dataset....")
+        print("Validating dataset....")
         return super(Isa, self).validate(dataset)
 
     def set_meta(self, dataset, **kwd):
-        logger.info("Setting metadata of ISA type: %s", dataset.file_name)
+        #logger.info("Setting metadata of ISA type: %s", dataset.file_name)
         print("Setting metadata of ISA type: %s" % dataset.file_name)
         # raise Error("Setting metadata of ISA type")
         super(Isa, self).set_meta(dataset, **kwd)
 
-        with tarfile.open(dataset.file_name, "r:gz") as tar:
-            for tarinfo in tar:
-                print("file: %s (%s)" % (tarinfo.name, tarinfo.size))
+#        with tarfile.open(dataset.file_name, "r:gz") as tar:
+#            for tarinfo in tar:
+#                print("file: %s (%s)" % (tarinfo.name, tarinfo.size))
 
     def write_from_stream(self, dataset, stream):
         print("Writing Dataset type: %s, keys=%s, values=%s, type_stream=%s", type(dataset), dataset.keys(),
@@ -122,7 +122,8 @@ class Isa(data.Text):
         super(Isa, self).write_from_stream(dataset, stream)
 
     def split(cls, input_datasets, subdir_generator_function, split_params):
-        super(Isa, cls).split(input_datasets, subdir_generator_function, split_params)
+        print("Splitting")
+	super(Isa, cls).split(input_datasets, subdir_generator_function, split_params)
 
     def set_raw_data(self, dataset, data):
         print("Setting raw data")
