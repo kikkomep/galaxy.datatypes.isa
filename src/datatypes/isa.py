@@ -44,6 +44,8 @@ import tarfile
 import tempfile
 import shutil
 
+from isatools import isatab  # depends on https://github.com/ISA-tools/isa-api/tree/py2_isatools-lite 62fb5f0
+
 from galaxy.datatypes import data
 from galaxy.datatypes import metadata
 
@@ -163,3 +165,37 @@ class Isa(data.Data):
     def _archive_composite_dataset(self, trans, data=None, **kwd):
         print("Archiving the composite dataset")
         return super(Isa, self)._archive_composite_dataset(trans, data, **kwd)
+
+    def make_html_table( self, dataset, **kwargs ):
+        """Create HTML table, used for displaying summary"""
+        investigation_filename = self.get_primary_filename(dataset.files_path)
+        # need to make sure other ISA files s_*.txt and a_*.txt are accessible
+        parser = isatab.Parser()
+        parser.parse(investigation_filename)
+        isa = parser.isa
+        # just an example how to pull data out
+        inv_report = {
+            'inv_title': isa.title,
+            'inv_description': isa.description,
+            'inv_submission_date': isa.submission_date,
+            'inv_public_release_date': isa.public_release_date
+        }
+        study_reports = []
+        for study in isa.studies:
+            study_reports.append(
+                {
+                    'study_filename': study.filename,
+                    'study_factors': ', '.join([x.name for x in study.factors]),
+                    'study_num_sources': len(study.sources),
+                    'study_num_samples': len(study.samples)
+                }
+            )
+        out = ['<table cellspacing="0" cellpadding="3">']
+        for k, v in inv_report.items():
+            out.append( '<tr><td colspan="100%%">{k}: {v}</td></tr>'.format(k=k, v=v) )
+        for study_report in study_reports:
+            for k, v in study_report.items():
+                out.append( '<tr><td colspan="100%%">{k}: {v}</td></tr>'.format(k=k, v=v) )
+        out.append( '</table>' )
+        out = "".join( out )
+        return out
